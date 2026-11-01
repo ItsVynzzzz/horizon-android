@@ -55,7 +55,7 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL
           df -h /
-      - name: Install Rust and the Android toolchain
+      - name: Install Rust
         run: |
           channel=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)
           [ -n "$channel" ] || { echo "No channel found in rust-toolchain.toml"; exit 1; }
@@ -66,8 +66,20 @@ jobs:
             *) echo "Unsupported ABI: $ABI"; exit 1 ;;
           esac
           rustup target add "$target" --toolchain "$channel"
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
+      - name: Install Android SDK components
+        run: |
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          echo "Android SDK folder: ${sdk:-not set}"
+          manager=$(command -v sdkmanager || true)
+          [ -n "$manager" ] || manager=$(ls "$sdk"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$manager" ]; then
+            echo "sdkmanager not found. SDK folder contents:"
+            ls -la "$sdk" "$sdk/cmdline-tools" 2>&1 || true
+            exit 1
+          fi
+          echo "Using $manager"
+          yes | "$manager" --licenses > /dev/null || true
+          "$manager" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: ". -> .local/ci-target"
