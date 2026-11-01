@@ -1,5 +1,6 @@
 use super::*;
-use horizon_client::{osk::Output, ui_theme::color};
+use crate::amber::{self, color};
+use horizon_client::osk::Output;
 use winit::{
     event::{KeyEvent, Touch},
     keyboard::{KeyCode, PhysicalKey},
@@ -67,30 +68,40 @@ pub(super) fn button(
     accent: bool,
 ) {
     let [x, y, w, h] = rect;
-    ui.rounded(
-        x,
-        y,
-        w,
-        h,
-        2.0,
-        if accent { color::ACCENT } else { color::RAISED },
-    );
+    let tab = matches!(action, Action::Page(_));
+    let radius = amber::pill(h);
+    if accent {
+        // The open page and the main action: Amber's accent fill with its lighter edge.
+        ui.rounded(x, y, w, h, radius, color::ACCENT);
+        ui.border(x, y, w, h, radius, color::ACCENT_EDGE);
+    } else if !tab {
+        amber::glass(ui, x, y, w, h, radius, color::RAISED);
+    }
     let padding = (w * 0.12).clamp(4.0, 12.0);
     let base = if w < 80.0 { 13.0 } else { 16.0 };
-    let font = if matches!(action, Action::Page(_)) {
+    let font = if tab {
         (base * ((w - 2.0 * padding) / ui.measure(Face::Medium, base, label).max(1.0)).min(1.0))
             .max(9.0)
     } else {
         base
     };
     let label = ui.fit_text(Face::Medium, font, label, w - 2.0 * padding);
+    // A label sits in the middle of its pill; a text field's stays at the left edge, where the
+    // caret is drawn.
+    let label_x = if matches!(action, Action::Field(_)) {
+        x + padding
+    } else {
+        x + ((w - ui.measure(Face::Medium, font, &label)) / 2.0).max(padding)
+    };
     ui.text(
         Face::Medium,
         font,
-        x + padding,
-        y + 11.0,
+        label_x,
+        y + ((h - font) / 2.0 - 1.0).max(2.0),
         if accent {
             color::ON_ACCENT
+        } else if tab {
+            color::MUTED
         } else {
             color::TEXT
         },
@@ -114,21 +125,23 @@ fn toggle(
         color::TEXT,
         if on { "On" } else { "Off" },
     );
+    // Amber's switch, 40 x 24: the accent when on, a faint plate with a stronger edge when off.
+    let (sx, sy) = (x + w - 44.0, y + 8.0);
+    if on {
+        ui.rounded(sx, sy, 40.0, 24.0, 12.0, color::ACCENT);
+        ui.border(sx, sy, 40.0, 24.0, 12.0, color::ACCENT_EDGE);
+    } else {
+        ui.rounded(sx, sy, 40.0, 24.0, 12.0, color::RAISED);
+        ui.border(sx, sy, 40.0, 24.0, 12.0, color::EDGE_STRONG);
+    }
+    let knob = if on { sx + 28.0 } else { sx + 12.0 };
     ui.rounded(
-        x + w - 52.0,
-        y + 8.0,
-        48.0,
-        24.0,
-        12.0,
-        if on { color::TEXT } else { color::HOVER },
-    );
-    ui.rounded(
-        x + w - if on { 26.0 } else { 50.0 },
-        y + 10.0,
-        20.0,
-        20.0,
-        10.0,
-        if on { color::BG } else { color::TEXT },
+        knob - 7.0,
+        sy + 5.0,
+        14.0,
+        14.0,
+        7.0,
+        if on { color::ON_ACCENT } else { color::MUTED },
     );
     targets.push(([x, y, w, h], action));
 }
@@ -253,6 +266,16 @@ impl Launcher {
         let tabs = Page::ALL.len() as f32;
         let tab_margin = if w < 700.0 { 16.0 } else { 32.0 };
         let tab_width = (w - 2.0 * tab_margin) / tabs;
+        // Amber's navigation capsule: one glass pill holds the pages, and the open one is filled.
+        amber::glass(
+            &mut ui,
+            tab_margin - 4.0,
+            84.0,
+            w - 2.0 * tab_margin + 4.0,
+            50.0,
+            25.0,
+            color::GLASS,
+        );
         for (i, page) in Page::ALL.iter().enumerate() {
             let x = tab_margin + i as f32 * tab_width;
             button(
@@ -274,6 +297,23 @@ impl Launcher {
         }
         let compact = w < 700.0;
         let page = self.catalog.page;
+        // Every page but Play sits on one glass card, as Amber's Mods, Accounts and Settings do.
+        if page != Page::Play {
+            let bottom = match page {
+                Page::Installed => h - 92.0,
+                Page::Settings => h - 122.0,
+                _ => h - 106.0,
+            };
+            amber::glass(
+                &mut ui,
+                16.0,
+                138.0,
+                w - 32.0,
+                (bottom - 138.0).max(0.0),
+                amber::CARD,
+                color::GLASS,
+            );
+        }
         if page == Page::Play {
             use horizon_client::official_install::InstallStage;
             let installed = horizon_client::official_install::ready(&self.home);
@@ -360,7 +400,14 @@ impl Launcher {
                 let bar_y = h - 152.0;
                 ui.rounded(32.0, bar_y, w - 64.0, 4.0, 2.0, color::RAISED);
                 if overall > 0.0 {
-                    ui.rounded(32.0, bar_y, (w - 64.0) * overall, 4.0, 2.0, color::ACCENT);
+                    ui.rounded(
+                        32.0,
+                        bar_y,
+                        (w - 64.0) * overall,
+                        4.0,
+                        2.0,
+                        color::ACCENT_SOFT,
+                    );
                 }
                 let detail = match progress.stage {
                     InstallStage::Download => format!(
@@ -437,7 +484,7 @@ impl Launcher {
                 Face::Medium,
                 18.0,
                 32.0,
-                142.0,
+                148.0,
                 color::TEXT,
                 if page == Page::Mods {
                     "Horizon Mods"
@@ -479,7 +526,12 @@ impl Launcher {
                 use crate::shader_catalog::Origin;
                 let width = ((w - 185.0) / 2.0).clamp(58.0, 120.0);
                 for (i, origin) in [Origin::Horizon, Origin::Modrinth].into_iter().enumerate() {
-                    let rect = [w - 32.0 - (2 - i) as f32 * width, 134.0, width - 5.0, 32.0];
+                    let rect = [w - 32.0 - (2 - i) as f32 * width, 142.0, width - 5.0, 28.0];
+                    let selected = (if page == Page::Mods {
+                        self.catalog.config.mod_source
+                    } else {
+                        self.catalog.config.shader_source
+                    }) == origin;
                     button(
                         &mut ui,
                         &mut self.targets,
@@ -490,16 +542,8 @@ impl Launcher {
                         } else {
                             Action::ShaderSource(origin)
                         },
-                        false,
+                        selected,
                     );
-                    if (if page == Page::Mods {
-                        self.catalog.config.mod_source
-                    } else {
-                        self.catalog.config.shader_source
-                    }) == origin
-                    {
-                        ui.border(rect[0], rect[1], rect[2], rect[3], 1.0, color::TEXT);
-                    }
                 }
             }
             let hint = match page {
@@ -1066,7 +1110,14 @@ impl Launcher {
         if let Some(index) = self.focus
             && let Some(([x, y, w, h], _)) = self.targets.get(index)
         {
-            ui.border(*x - 2.0, *y - 2.0, *w + 4.0, *h + 4.0, 2.0, color::TEXT);
+            ui.border(
+                *x - 2.0,
+                *y - 2.0,
+                *w + 4.0,
+                *h + 4.0,
+                amber::pill(*h + 4.0),
+                color::ACCENT_SOFT,
+            );
             self.cursor = (
                 f64::from((x + w / 2.0) * ui.density),
                 f64::from((y + h / 2.0) * ui.density),
@@ -1083,14 +1134,7 @@ impl Launcher {
                     && point[1] >= rect[1]
                     && point[1] <= rect[1] + rect[3]
             }) {
-                ui.rounded(
-                    *x,
-                    *y,
-                    *w,
-                    *h,
-                    2.0,
-                    horizon_client::hud::rgba(255, 255, 255, 48),
-                );
+                ui.rounded(*x, *y, *w, *h, amber::pill(*h), color::HOVER);
             }
         }
         if !self.mouse_down
@@ -1099,14 +1143,7 @@ impl Launcher {
             && time.elapsed() < std::time::Duration::from_millis(160)
             && let Some(([x, y, w, h], _)) = self.targets.iter().find(|(_, a)| *a == action)
         {
-            ui.rounded(
-                *x,
-                *y,
-                *w,
-                *h,
-                2.0,
-                horizon_client::hud::rgba(255, 255, 255, 48),
-            );
+            ui.rounded(*x, *y, *w, *h, amber::pill(*h), color::HOVER);
         }
         crate::documents::draw_ui(&mut ui);
         ui.finish();

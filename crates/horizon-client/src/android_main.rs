@@ -17,6 +17,8 @@ mod account;
 #[allow(dead_code)]
 #[path = "../../../launcher/src/browser.rs"]
 mod browser;
+#[path = "android/amber.rs"]
+mod amber;
 #[path = "android/dns.rs"]
 mod android_dns;
 #[path = "android/catalog.rs"]

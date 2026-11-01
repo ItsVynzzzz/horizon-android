@@ -1,7 +1,8 @@
 //! Native account panel; authentication is shared with the desktop launcher.
 use super::pages::{Action, button};
 use crate::account::{self, Account, Accounts, Secrets, SignIn, SignInState};
-use horizon_client::ui_theme::{Face, Ui, color};
+use crate::amber::{self, color};
+use horizon_client::ui_theme::{Face, Ui};
 
 pub(super) struct Login {
     pub visible: bool,
@@ -175,7 +176,7 @@ impl Login {
         let h = (ui.h - 24.0).min(550.0);
         let x = (ui.w - w) / 2.0;
         let y = (ui.h - h) / 2.0;
-        ui.rounded(x, y, w, h, 8.0, color::BG);
+        amber::glass(ui, x, y, w, h, amber::CARD, color::PANEL);
         if editing_name {
             ui.text(
                 Face::Medium,
@@ -226,7 +227,7 @@ impl Login {
             x + 20.0,
             y + 58.0,
             if self.signed_in {
-                color::ACCENT
+                color::ACCENT_SOFT
             } else {
                 color::MUTED
             },

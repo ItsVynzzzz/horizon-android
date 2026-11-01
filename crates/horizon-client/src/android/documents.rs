@@ -1,9 +1,10 @@
 //! SAF selection, bounded background imports and explicit collision choices.
+use crate::amber::{self, color};
 use horizon_client::{
     Result,
     content_files::{self, Kind},
     hud::{HudAtlas, HudBatch, rgba},
-    ui_theme::{Face, Ui, color},
+    ui_theme::{Face, Ui},
 };
 use jni::{
     JNIEnv,
@@ -432,7 +433,7 @@ pub fn draw_ui(ui: &mut Ui<'_>) {
     let x = (ui.w - w) / 2.0;
     let y = ((ui.h - height) / 2.0).max(0.0);
     ui.rounded(0.0, 0.0, ui.w, ui.h, 0.0, rgba(0, 0, 0, 180));
-    ui.rounded(x, y, w, height, 2.0, color::BG);
+    amber::glass(ui, x, y, w, height, amber::CARD, color::PANEL);
     ui.text(
         Face::Medium,
         20.0,
@@ -454,11 +455,20 @@ pub fn draw_ui(ui: &mut Ui<'_>) {
         } else {
             [x + 12.0 + i as f32 * width, y + 92.0, width - 4.0, 38.0]
         };
-        ui.rounded(rect[0], rect[1], rect[2], rect[3], 2.0, color::RAISED);
+        amber::glass(
+            ui,
+            rect[0],
+            rect[1],
+            rect[2],
+            rect[3],
+            amber::pill(rect[3]),
+            color::RAISED,
+        );
+        let label_x = rect[0] + ((rect[2] - ui.measure(Face::Medium, 16.0, label)) / 2.0).max(8.0);
         ui.text(
             Face::Medium,
             16.0,
-            rect[0] + 8.0,
+            label_x,
             rect[1] + 7.0,
             color::TEXT,
             label,

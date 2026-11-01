@@ -3,8 +3,9 @@ use super::{
     Launcher,
     pages::{Action, button},
 };
+use crate::amber::{self, color};
 use crate::catalog::RendererMode;
-use horizon_client::ui_theme::{Face, Ui, color};
+use horizon_client::ui_theme::{Face, Ui};
 
 pub(super) enum Kind {
     Aspect,
@@ -269,6 +270,15 @@ impl Chooser {
         if let Some(device) = &self.device {
             ui.text(Face::Regular, 13.0, 32.0, 111.0, color::MUTED, device);
         }
+        amber::glass(
+            ui,
+            16.0,
+            129.0,
+            w - 32.0,
+            (h - 92.0 - 129.0).max(0.0),
+            amber::CARD,
+            color::GLASS,
+        );
         let top = 137.0;
         let bottom = h - 100.0;
         self.scroll = self.scroll.clamp(
@@ -280,10 +290,15 @@ impl Chooser {
             if y < top || y + 76.0 > bottom {
                 continue;
             }
-            ui.rounded(34.0, y + 10.0, 22.0, 22.0, 11.0, color::TEXT);
+            let ring = if *selected {
+                color::ACCENT_SOFT
+            } else {
+                color::EDGE_STRONG
+            };
+            ui.rounded(34.0, y + 10.0, 22.0, 22.0, 11.0, ring);
             ui.rounded(36.0, y + 12.0, 18.0, 18.0, 9.0, color::BG);
             if *selected {
-                ui.rounded(40.0, y + 16.0, 10.0, 10.0, 5.0, color::TEXT);
+                ui.rounded(40.0, y + 16.0, 10.0, 10.0, 5.0, color::ACCENT_SOFT);
             }
             ui.text(Face::Medium, 19.0, 80.0, y + 8.0, color::TEXT, label);
             ui.text(Face::Regular, 14.0, 80.0, y + 40.0, color::MUTED, detail);
