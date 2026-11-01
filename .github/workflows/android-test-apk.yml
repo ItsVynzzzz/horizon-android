@@ -1,0 +1,113 @@
+# A test APK for checking the launcher on a phone when no PC is at hand. It is built on GitHub's runners
+# in tools/android_build.py's --public mode (generated engine tables only; the original Minecraft files
+# are downloaded on the phone and never packaged) and signed with that script's throwaway debug key,
+# which is cached so a newer build can update the one before it. This is not a release: nothing is
+# tagged or published, and the APK is kept as a short-lived workflow artifact.
+name: Android test APK
+on:
+  push:
+    branches: [android]
+    paths:
+      - 'crates/**'
+      - 'launcher/**'
+      - 'packaging/android/**'
+      - 'tools/android_*.py'
+      - 'tools/lab.py'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'research-lock.json'
+      - '.github/workflows/android-test-apk.yml'
+  workflow_dispatch:
+    inputs:
+      abi:
+        description: Phone CPU (arm64-v8a fits almost every phone from the last several years)
+        type: choice
+        options: [arm64-v8a, armeabi-v7a]
+        default: arm64-v8a
+      profile:
+        description: fast builds sooner; release (ThinLTO) runs better but takes much longer
+        type: choice
+        options: [fast, release]
+        default: fast
+permissions:
+  contents: read
+concurrency:
+  group: android-test-apk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    env:
+      ABI: ${{ inputs.abi || 'arm64-v8a' }}
+      PROFILE: ${{ inputs.profile || 'fast' }}
+      HORIZON_TELEMETRY_URL: "off"
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.local/ci-target
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Install Rust and the Android toolchain
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)
+          [ -n "$channel" ] || { echo "No channel found in rust-toolchain.toml"; exit 1; }
+          rustup toolchain install "$channel" --profile minimal -c clippy -c rustfmt
+          case "$ABI" in
+            arm64-v8a) target=aarch64-linux-android ;;
+            armeabi-v7a) target=armv7-linux-androideabi ;;
+            *) echo "Unsupported ABI: $ABI"; exit 1 ;;
+          esac
+          rustup target add "$target" --toolchain "$channel"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          workspaces: ". -> .local/ci-target"
+          key: ${{ env.ABI }}-${{ env.PROFILE }}
+          cache-on-failure: true
+      # The build script wants Gradle 8.14 (Android Gradle Plugin 8.11). The action's own caching is a
+      # commercial service, so it stays off.
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+        with:
+          gradle-version: "8.14"
+          cache-disabled: true
+          add-job-summary: never
+      # The debug key is generated once by the build script. Keeping it lets a new APK install over the
+      # previous one; without it Android refuses the update until the old app is uninstalled.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .local/android/debug.keystore
+          key: android-test-keystore-v1
+      - name: Prepare engine tables from Mojang's official downloads
+        run: python3 tools/android_prepare.py
+      - name: Build, sign and audit the APK
+        run: >
+          python3 tools/android_build.py --abi "$ABI" --public --profile "$PROFILE"
+          --sdk "$ANDROID_HOME" --java-home "$JAVA_HOME_17_X64" --gradle "$(command -v gradle)"
+      - name: Summary
+        run: |
+          apk=".local/android/apk/$ABI/horizon-android-public.apk"
+          {
+            echo "### Horizon Android test APK"
+            echo
+            echo "- ABI \`$ABI\`, profile \`$PROFILE\`, commit \`${GITHUB_SHA::12}\`"
+            echo "- Size $(du -h "$apk" | cut -f1), SHA-256 \`$(sha256sum "$apk" | cut -d' ' -f1)\`"
+            echo
+            echo "Unduh \`horizon-android-public.apk\` dari bagian **Artifacts** di bawah, lalu pasang di HP."
+            echo "APK ini memakai kunci debug sementara. Kalau Horizon resmi atau build dengan kunci lain sudah"
+            echo "terpasang, Android menolak pemasangan sampai aplikasi lama dicopot (data game ikut terhapus)."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          path: .local/android/apk/${{ env.ABI }}/horizon-android-public.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
